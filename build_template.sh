@@ -1,4 +1,4 @@
-export name=Hider2\
+export name=BayesBot\
 export rtpath=\
 export robocodepath=\
 export cp = $rtpath:$robocodepath/libs/robocode.jar
