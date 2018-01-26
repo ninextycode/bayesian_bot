@@ -1,10 +1,8 @@
-export name=BayesBot\
-export rtpath=\
-export robocodepath=\
-export cp = $rtpath:$robocodepath/libs/robocode.jar
-\
-&&\
-\
+name=BayesBot
+rtpath= #to be set
+robocodepath= #to be set
+cp=$rtpath:$robocodepath/libs/robocode.jar:
+
 find . -type f -name '*.class' -delete\
 \
 &&\

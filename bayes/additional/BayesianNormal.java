@@ -23,7 +23,7 @@ public class BayesianNormal {
     }
 
     public void update(double x) {
-        double new_m = = (k * m + x) / (k + 1);
+        double new_m = (k * m + x) / (k + 1);
         double new_k = k + 1;
         double new_a = a + 0.5d;
         double new_b = b + (k * (x - m) * (x - m) / (2 * (k + 1)));
@@ -39,11 +39,12 @@ public class BayesianNormal {
     }
 
     public static double getNormal(double mean, double var) {
+        // Box–Muller transform
+
         double epsilon = 10e-9;
 
         double z1;
         boolean generate;
-
 
         double u1, u2;
         do

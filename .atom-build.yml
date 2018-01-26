@@ -1,0 +1,3 @@
+cmd: ./build.sh
+errorMatch:
+    - "(?<file>[a-zA-z0-9._\/]+):(?<line>\\d+):(?<message>.*\n.*\n.*\n( *symbol.+)?)"

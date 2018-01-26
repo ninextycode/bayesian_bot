@@ -1,85 +1,53 @@
-package bayes; // replace XXXXXXX with your University ID number
+package bayes;
 
 import robocode.*;
 import bayes.additional.*;
 import java.util.LinkedList;
 import java.util.ArrayList;
-import java.util.ListIterator;
 import java.util.Iterator;
 import java.util.HashMap;
 import java.util.Map;
 
-import java.lang.Runnable;
-import java.lang.Thread;
-import java.util.Arrays;
-
-// API help : http://robocode.sourceforge.net/docs/robocode/robocode/Robot.html
 
 
 public class BayesBot extends Robot	{
-
-
-    private boolean lastWasTurn = true;
-    private boolean lastWasMeaningfull = true;
-
 	private HashMap<String, LinkedList<Matrix>> observationsMap =
 									new HashMap<String, LinkedList<Matrix>>();
 
-	private static HashMap<String, BayesianNormal> mkabParallelMove =
-								new HashMap<String, BayesianNormal>();
-
-	private static HashMap<String, BayesianNormal> mkabPerpMove =
-										new HashMap<String, BayesianNormal>();
-
-	private static HashMap<String, BayesianNormal> mkabParallelStop =
-								new HashMap<String, BayesianNormal>();
-
-	private static HashMap<String, BayesianNormal> mkabPerpStop =
-										new HashMap<String, BayesianNormal>();
+    public static Aimer aimer = new Aimer();
 
 
-	private double[] mkabParallelPriorMove = new double[] {
-		0.7, 10, 3, 1
-	};
-
-	private double[] mkabPerpPriorMove = new double[] {
-		0, 10, 3, 1
-	};
 
 
-	private double[] mkabParallelPriorStop = new double[] {
-		0, 10, 3, 1
-	};
-
-	private double[] mkabPerpPriorStop = new double[] {
-		0, 10, 3, 1
-	};
-
-
-	private ScannedRobotEvent lastObservation, lastTargetEvent;
+	private ScannedRobotEvent lastObservation, lastTarget;
 	private HitByBulletEvent lastHitEvent;
 
+	private boolean insideOnScannedRobot, insideOnHitByBullet, insideOnHitRobot;
+	private ArrayList<Matrix> toCheck = new ArrayList<Matrix>();
 
-	private void clearToCheck(String name) {
-		if(nameToCheckFor.equals(name)) {
-			forceClearToCheck();
-		}
-	}
+	private double wallPadding;
 
 	private void clearToCheck() {
 		toCheck = new ArrayList<Matrix>();
 	}
 
+	private void addToCheck(Matrix m) {
+		toCheck.add(m);
+	}
+
+	public boolean insideEvent() {
+		return insideOnScannedRobot || insideOnHitByBullet || insideOnHitRobot;
+	}
 
 	private void check() {
-		if(insideEvent() || lock) {
+		if(insideEvent()) { //only check if not working on events
 			return;
 		}
 
 		if(toCheck == null || toCheck.size() == 0) {
 			return;
 		}
-		ArrayList<Matrix> toCheckTemp = toCheck; //to prevent recursion
+		ArrayList<Matrix> toCheckTemp = toCheck; //to prevent recursion stack owerflow
 		toCheck = new ArrayList<Matrix>();
 
 		for(int i = 0; i < toCheckTemp.size(); i++) {
@@ -90,43 +58,52 @@ public class BayesBot extends Robot	{
 
     @Override
     public void fire(double energy) {
-        if(lastWasTurn) {
-            super.fire(energy);
-        }
+        super.fire(energy);
         return;
     }
+
+    //if robot scans an evemy while moving, enemy's position canot be correctly calculated
+    //this flag indicates if the last robot's move was rotation insteat of motion
+    boolean lastWasStopped = true;
+
+    boolean lock;
+    //a flag to be raised during aiming/shooting,
+    //to prevent new events interrupting shooting
+
 	@Override
 	public void turnLeft(double angleInDegrees) {
 		check();
-        if(DataShaper.almostEq(angleInDegrees, limit)) {
+        if(DataShaper.almostZero(angleInDegrees)) {
             return;
         }
+        lastWasStopped=true;
 		super.turnLeft(angleInDegrees);
 	}
 
 	@Override
 	public void turnGunLeft(double angleInDegrees) {
 		check();
-        if(DataShaper.almostEq(angleInDegrees, limit)) {
+        if(DataShaper.almostZero(angleInDegrees)) {
             return;
         }
-        System.out.println("turnGunLeft");
-        lastWasTurn=true;
+        lastWasStopped=true;
 		super.turnGunLeft(angleInDegrees);
-        lastWasTurn=true;
 	}
 
 	@Override
 	public void turnRadarLeft(double angleInDegrees) {
 		check();
+        if(DataShaper.almostZero(angleInDegrees)) {
+            return;
+        }
+        lastWasStopped=true;
 		super.turnRadarLeft(angleInDegrees);
 	}
-
-
 
 	@Override
 	public void ahead(double distance) {
 		check();
+        lastWasStopped=false;
 		super.ahead(distance);
 	}
 
@@ -145,11 +122,11 @@ public class BayesBot extends Robot	{
 
 
 	private void nextAction() {
-		if(! isNearWall()) {
+		if(!isNearWall()) {
 			goToClosestWall();
 		} else {
 			scan();
-			patrol();
+			//patrol();
 		}
 	}
 
@@ -288,184 +265,28 @@ public class BayesBot extends Robot	{
 	@Override
 	public void onScannedRobot(ScannedRobotEvent event) {
         insideOnScannedRobot = true;
-
-		Matrix data = writeDataPoint(event);
-
         lastObservation = event;
-		lastOnScannedRobotTime = getTime();
 
-		if(isDuel()) {
-			if(event.getName().equals(lastTargetEvent.getName())) {
-				double de = event.getEnergy() - lastTargetEvent.getEnergy();
-				if(0 > de && de >= -3) {
-					mustEvade = true;
-				}
-			}
-		}
+		Matrix data = DataFiller.writeDataPoint(event, observationsMap);
+        Aimer.updateParameters(observationsMap.get(event.getName()), data);
 
-       updateParameters(event.getName(), data);
-
-       if(!lastWasTurn) {
-           Matrix position = new Matrix(2, 1, new double[] {
-               DataShaper.getHistoryX(data),
-               DataShaper.getHistoryY(data)
-           });
-
-           System.out.println("checkAroundPoint");
-           checkAroundPoint(position, DataShaper.getHistoryHeading(data));
-       }
-
-
-        if(mustEvade && !evading && !justEvaded) {
-            evading = true;
-			setAdjustGunForRobotTurn(true);
-			standSideToBearing(DataShaper.getBearingRadiansFromX(this, event));
-			setAdjustGunForRobotTurn(false);
-			smartRandomAhead(50, 80);
-			justEvaded = true;
-            mustEvade = false;
-            evading = false;
-		}
-
-        if(lastWasTurn) {
-        	justEvaded = false;
-            maybeShoot(event, data);
+        if(lock) {
+            insideOnScannedRobot = false;
+            return;
         }
 
-
-
-
-
+        //at least check arount where we saw robot if last action was moving
+        //ignoring the fact that position is not exactly correct
+        if(!lastWasStopped) {
+           Matrix position = HistoryFunctions.getHistoryXY(data);
+           checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
+        } else {
+           maybeShoot(event, data);
+        }
 
 		DataFiller.clearFromOldObservations(this, observationsMap, timeLimit);
-
 		insideOnScannedRobot = false;
 	}
-
-	private Matrix writeDataPoint(ScannedRobotEvent event) {
-
-
-		Matrix pos = DataShaper.getAbsPosition(this, event);
-
-		Matrix data = new Matrix(7, 1, new double[] {
-			pos.get(0, 0),  //0
-			pos.get(1, 0),  //1
-			event.getTime(),    //2
-
-			event.getVelocity(),//3
-			DataShaper.getHeadingRadiansFromX(event), //4
-			0 , //5 d*abs(v)
-			1000  //6 dt, initially large, to make first data point meaningless
-
-		});
-
-		if(observationsMap.containsKey(event.getName())) {
-
-			LinkedList<Matrix> obsList = observationsMap.get(event.getName());
-
-			if(obsList.size() > 0) {
-				Matrix obsLast = obsList.getLast();
-				double dv = DataShaper.calculateDV(
-								DataShaper.getHistoryVelocity(data),
-								DataShaper.getHistoryVelocity(obsLast));
-				data.set(5, 0, dv);
-
-				double dt = DataShaper.getHistoryTime(data) - DataShaper.getHistoryTime(obsLast);
-				data.set(6, 0, dt);
-
-				obsList.addLast(data);
-			}
-
-		} else {
-			LinkedList<Matrix> obsList = new LinkedList<Matrix>();
-			obsList.addLast(data);
-			observationsMap.put(event.getName(), obsList);
-		}
-		return data;
-	};
-
-	private void updateParameters(String name, Matrix data) {
-		preparePriorIfNecessary(name);
-
-		LinkedList<Matrix> observationsList = observationsMap.get(name);
-		Iterator<Matrix> it = observationsList.descendingIterator();
-		while(it.hasNext()) {
-			Matrix oldData = it.next();
-			long t = lastOnScannedRobotTime - (long)oldData.get(2, 0);
-			if(t > maxT) {
-				return;
-			}
-			if(t > minT ) {
-				if(DataShaper.getHistoryDT(oldData) > informationTimeLimit) {
-					//velocity change was meaningless
-					return;
-				}
-
-				boolean stopped = DataShaper.isStopMode(oldData);
-
-				double vOld = DataShaper.simplifiedV(DataShaper.getHistoryVelocity(oldData));
-				double aOld = DataShaper.getHistoryHeading(oldData);
-
-				double dx = data.get(0, 0) - oldData.get(0, 0);
-				double dy = data.get(1, 0) - oldData.get(1, 0);
-
-
-				Matrix dp = DataShaper.toVelocityCoordinares(
-					vOld, aOld,
-					t,
-					new Matrix(2, 1, new double[] {dx, dy})
-				);
-
-				HashMap<String, double[]> mkabParallel;
-				HashMap<String, double[]> mkabPerp;
-
-				if (stopped) {
-					mkabParallel = this.mkabParallelStop;
-					mkabPerp = this.mkabPerpStop;
-				} else {
-					mkabParallel = this.mkabParallelMove;
-					mkabPerp = this.mkabPerpMove;
-				}
-
-				DataFiller.addMovedPoint(
-					dp,
-					mkabParallel.get(name),
-					mkabPerp.get(name)
-				);
-
-
-				double[] paramsParallel  = DataShaper.mlNormalParams(mkabParallel.get(name));
-				double[] paramsPerp = DataShaper.mlNormalParams(mkabPerp.get(name));
-			}
-		}
-	}
-
-	private void preparePriorIfNecessary(String name) {
-		if(! mkabPerpMove.containsKey(name)) {
-			mkabPerpMove.put(name, new double[] {
-				mkabPerpPriorMove[0], mkabPerpPriorStop[1],
-				mkabPerpPriorMove[2], mkabPerpPriorStop[3]
-			});
-
-			mkabParallelMove.put(name, new double[] {
-				mkabParallelPriorMove[0], mkabParallelPriorMove[1],
-				mkabParallelPriorMove[2], mkabParallelPriorMove[3]
-			});
-		}
-
-		if(! mkabPerpStop.containsKey(name)) {
-			mkabPerpStop.put(name, new double[] {
-				mkabPerpPriorStop[0], mkabPerpPriorStop[1],
-				mkabPerpPriorStop[2], mkabPerpPriorStop[3]
-			});
-
-			mkabParallelStop.put(name, new double[] {
-				mkabParallelPriorStop[0], mkabParallelPriorStop[1],
-				mkabParallelPriorStop[2], mkabParallelPriorStop[3]
-			});
-		}
-	}
-
 
 
 	public void maybeShoot(ScannedRobotEvent event, Matrix data) {
@@ -476,14 +297,10 @@ public class BayesBot extends Robot	{
 		double a = DataShaper.getBearingRadiansFromX(this, event);
 		LinkedList<Matrix> observationsList = observationsMap.get(event.getName());
 
-		if(DataShaper.getHistoryDT(data) > informationTimeLimit ||
+		if(HistoryFunctions.getHistoryDT(data) > informationTimeLimit ||
                 observationsList.size() < necessaryObservations) {
-			forceClearToCheck();
-			Matrix position = new Matrix(2, 1, new double[] {
-				DataShaper.getHistoryX(data),
-				DataShaper.getHistoryY(data)
-			});
-			checkAroundPoint(position, DataShaper.getHistoryHeading(data));
+			Matrix position = HistoryFunctions.getHistoryXY(data);
+			checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
 			return;
 		}
 
@@ -495,66 +312,36 @@ public class BayesBot extends Robot	{
 
 
 	public void shootConsideringSpeed(ScannedRobotEvent event, Matrix data, double energy) {
-		lastTargetPosition = DataShaper.getAbsPosition(this, event);
-		lastTargetEvent = event;
 
-		Matrix targetPosition = DataShaper.getAbsPosition(this, event);
-		double alpha = DataShaper.getHeadingRadiansFromX(event);
+        lastTargetPosition = HistoryFunctions.getHistoryXY(data);
+        lastTargetEvent = event;
 
-		double simplifiedV = DataShaper.simplifiedV(event.getVelocity());
-
-		double distance = Math.hypot(
-            DataShaper.getHistoryX(data) - getX(),
-            DataShaper.getHistoryY(data) - getY()
-        );
-
-		HashMap<String, double[]> mkabParallel;
-		HashMap<String, double[]> mkabPerp;
-
-		boolean stopped = DataShaper.isStopMode(data);
-		if (stopped) {
-			mkabParallel = this.mkabParallelStop;
-			mkabPerp = this.mkabPerpStop;
-		} else {
-			mkabParallel = this.mkabParallelMove;
-			mkabPerp = this.mkabPerpMove;
-		}
-
-		double[] paramsParallel  = DataShaper.mlNormalParams(mkabParallel.get(event.getName()));
-		double[] paramsPerp = DataShaper.mlNormalParams(mkabPerp.get(event.getName()));
 
 		Matrix guessedPositionChange;
-		long bulletFlyTime;
+        double distance = Math.hypot(
+            HistoryFunctions.getHistoryX(data) - getX(),
+            HistoryFunctions.getHistoryY(data) - getY()
+        );
+        long bulletFlyTime =
+            (long)Math.ceil(
+                distance / DataShaper.getBulletSpeed(energy) + 2);
+
 		do {
-			Matrix targetInVCoordinates = new Matrix(2, 1, new double[] {
-				DataShaper.getNormal(paramsParallel[0], paramsParallel[1]),
-				DataShaper.getNormal(paramsPerp[0], paramsPerp[1])
-			});
 
-			bulletFlyTime = (long)Math.ceil(distance / DataShaper.getBulletSpeed(energy) + 2);
-
-			guessedPositionChange = DataShaper.fromVelocityCoordinares(simplifiedV,
-															alpha, bulletFlyTime, targetInVCoordinates);
-
-		} while(
-			DataShaper.length(guessedPositionChange) >= bulletFlyTime * DataShaper.MAX_V);
+		} while( //reject unrealistic positions
+			DataShaper.length(guessedPositionChange)
+                >= bulletFlyTime * DataShaper.MAX_V);
 
 
 
 		Matrix guessInAbsCoordinates = guessedPositionChange.add(targetPosition);
 
-		System.out.println("targetPosition " + targetPosition.toStringFull());
-
-
-		Matrix targetRelative = targetPosition.add(DataShaper.getMyPosition(this).scale(-1));
-
 		lock = true;
         RobotActions.shootAt(this, guessInAbsCoordinates);
 		lock = false;
 
-		scan();
-
-		checkAroundPoint(targetPosition, DataShaper.getHistoryHeading(data));
+		scan(); // maybe target is still in the radar ray
+		checkAroundPoint(targetPosition, HistoryFunctions.getHistoryHeading(data));
 
 	}
 
@@ -589,12 +376,12 @@ public class BayesBot extends Robot	{
 	public void onHitByBullet(HitByBulletEvent event) {
 		HitByBulletEvent eventBeforeThis = lastHitEvent;
 		lastHitEvent = event;
-
-		if(lock)
-			return;
-
 		insideOnHitByBullet = true;
 
+		if(lock) {
+            insideOnHitByBullet = false;
+			return;
+        }
 
 		if(lastTargetEvent == null || lastTargetEvent.getDistance() > importantTargetDistance) {
 			double a = DataShaper.getBearingRadiansFromX(this, event);
@@ -605,7 +392,7 @@ public class BayesBot extends Robot	{
 	}
 
 	private void checkAround(double alpha, String name) {
-		forceClearToCheck();
+		clearToCheck();
 
 		Matrix myPosition = DataShaper.getMyPosition(this);
 
@@ -636,12 +423,12 @@ public class BayesBot extends Robot	{
 		addToCheck(check1);
 	}
 
-	private void checkAroundPoint(Matrix position, double heading) {
-		forceClearToCheck();
+	private void checkAroundPoint(Matrix position, double enemyHeadinh) {
+		clearToCheck();
 
 		Matrix vel = new Matrix(2, 1, new double[] {
-			DataShaper.MAX_V * Math.cos(heading),
-			DataShaper.MAX_V * Math.sin(heading)
+			DataShaper.MAX_V * Math.cos(enemyHeadinh),
+			DataShaper.MAX_V * Math.sin(enemyHeadinh)
 		});
 
 		Matrix check  = position;
@@ -659,14 +446,14 @@ public class BayesBot extends Robot	{
 
 	private void runFromBullets(HitByBulletEvent event) {
 		System.out.println("runFromBullets");
-		forceClearToCheck();
+		clearToCheck();
 		standSideToBearing(DataShaper.getBearingRadiansFromX(this, event));
 
 
 		smartRandomAhead(80, 200);
 	}
 
-	private void standSideToBearing(double bearing) {
+	private void standFlankToBearing(double bearing) {
 		double alpha =
 			DataShaper.truncateRad(DataShaper.getHeadingRadiansFromX(this) - bearing);
 
@@ -720,7 +507,6 @@ public class BayesBot extends Robot	{
 		}
 		RobotActions.moveAt(this, target);
 	}
-
 
 	private boolean isInCorner(Matrix p) {
 		for(int i = 0; i < 4; i++) {
