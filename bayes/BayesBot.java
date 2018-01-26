@@ -15,17 +15,17 @@ public class BayesBot extends Robot	{
 									new HashMap<String, LinkedList<Matrix>>();
 
     public static Aimer aimer = new Aimer();
+	private Matrix lastTargetPosition;
 
-
-
-
-	private ScannedRobotEvent lastObservation, lastTarget;
+	private ScannedRobotEvent lastObservation, lastTargetEvent;
 	private HitByBulletEvent lastHitEvent;
 
 	private boolean insideOnScannedRobot, insideOnHitByBullet, insideOnHitRobot;
 	private ArrayList<Matrix> toCheck = new ArrayList<Matrix>();
 
 	private double wallPadding;
+	private long historyTimeLimit = 6000;
+
 
 	private void clearToCheck() {
 		toCheck = new ArrayList<Matrix>();
@@ -215,6 +215,8 @@ public class BayesBot extends Robot	{
 
 		int wall = getClosestWall();
 		double[] target = new double[2];
+		int patrolStep = 200;
+
 		switch (wall) {
 			case 0:
 				target[0] = getBattleFieldWidth() - wallPadding / 2;
@@ -267,8 +269,8 @@ public class BayesBot extends Robot	{
         insideOnScannedRobot = true;
         lastObservation = event;
 
-		Matrix data = DataFiller.writeDataPoint(event, observationsMap);
-        Aimer.updateParameters(observationsMap.get(event.getName()), data);
+		Matrix data = HistoryFunctions.writeMatrixOfObservation(event, observationsMap);
+        aimer.updateParameters(observationsMap.get(event.getName()), event.getName());
 
         if(lock) {
             insideOnScannedRobot = false;
@@ -284,57 +286,61 @@ public class BayesBot extends Robot	{
            maybeShoot(event, data);
         }
 
-		DataFiller.clearFromOldObservations(this, observationsMap, timeLimit);
+		HistoryFunctions.clearFromOldObservations(this, observationsMap, historyTimeLimit);
 		insideOnScannedRobot = false;
 	}
 
 
 	public void maybeShoot(ScannedRobotEvent event, Matrix data) {
-		if(event.getDistance() > tryShootDistance) {
+		double distance = event.getDistance();
+		double energy = DataShaper.getEnergyFromDistance(distance);
+
+		System.out.println(Aimer.maxShootDistance(energy));
+		if(distance > Aimer.maxShootDistance(energy)) {
 			return;
 		}
 
 		double a = DataShaper.getBearingRadiansFromX(this, event);
 		LinkedList<Matrix> observationsList = observationsMap.get(event.getName());
 
-		if(HistoryFunctions.getHistoryDT(data) > informationTimeLimit ||
-                observationsList.size() < necessaryObservations) {
+		if(! aimer.wantToShoot(data, observationsList.size())) {
 			Matrix position = HistoryFunctions.getHistoryXY(data);
 			checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
 			return;
 		}
 
-		double energy = DataShaper.getEnergyFromDistance(event.getDistance());
 
 		shootConsideringSpeed(event, data, energy);
 	}
 
 
 
-	public void shootConsideringSpeed(ScannedRobotEvent event, Matrix data, double energy) {
 
-        lastTargetPosition = HistoryFunctions.getHistoryXY(data);
+	public void shootConsideringSpeed(ScannedRobotEvent event, Matrix data, double energy) {
+        Matrix targetPosition = HistoryFunctions.getHistoryXY(data);
+		lastTargetPosition = targetPosition.copy();
         lastTargetEvent = event;
 
-
-		Matrix guessedPositionChange;
-        double distance = Math.hypot(
-            HistoryFunctions.getHistoryX(data) - getX(),
-            HistoryFunctions.getHistoryY(data) - getY()
+        double distance = DataShaper.hypot(
+            HistoryFunctions.getHistoryXY(data).add(
+				DataShaper.getMyPosition(this).inplaceScale(-1)
+			)
         );
+
         long bulletFlyTime =
             (long)Math.ceil(
                 distance / DataShaper.getBulletSpeed(energy) + 2);
 
+		Matrix guessedPositionChange;
 		do {
-
+			guessedPositionChange = aimer.suggestEnemyPoitionChange(data, event.getName(), bulletFlyTime);
 		} while( //reject unrealistic positions
-			DataShaper.length(guessedPositionChange)
+			DataShaper.hypot(guessedPositionChange)
                 >= bulletFlyTime * DataShaper.MAX_V);
 
 
 
-		Matrix guessInAbsCoordinates = guessedPositionChange.add(targetPosition);
+		Matrix guessInAbsCoordinates = guessedPositionChange.add(lastTargetPosition);
 
 		lock = true;
         RobotActions.shootAt(this, guessInAbsCoordinates);
@@ -382,11 +388,6 @@ public class BayesBot extends Robot	{
             insideOnHitByBullet = false;
 			return;
         }
-
-		if(lastTargetEvent == null || lastTargetEvent.getDistance() > importantTargetDistance) {
-			double a = DataShaper.getBearingRadiansFromX(this, event);
-			//checkAround(a, event.getName());
-		}
 
 		insideOnHitByBullet = false;
 	}
@@ -447,20 +448,10 @@ public class BayesBot extends Robot	{
 	private void runFromBullets(HitByBulletEvent event) {
 		System.out.println("runFromBullets");
 		clearToCheck();
-		standSideToBearing(DataShaper.getBearingRadiansFromX(this, event));
+		RobotActions.standFlankToBearing(this, DataShaper.getBearingRadiansFromX(this, event));
 
 
 		smartRandomAhead(80, 200);
-	}
-
-	private void standFlankToBearing(double bearing) {
-		double alpha =
-			DataShaper.truncateRad(DataShaper.getHeadingRadiansFromX(this) - bearing);
-
-		alpha = Math.atan(Math.tan(alpha));
-		if(Math.abs(alpha) < Math.PI / 6) {
-			RobotActions.turnRad(this, Math.signum(alpha) * (Math.PI / 2 - Math.abs(alpha)));
-		}
 	}
 
 

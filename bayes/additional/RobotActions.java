@@ -143,8 +143,6 @@ public class RobotActions {
         rotateGunRad(r, a);
     }
 
-
-
     public static void rotateRadarByMatrtix(Robot r, Matrix m) {
         rotateRadarRadAt(r, getTargetFromMatrix(m));
     }
@@ -168,15 +166,21 @@ public class RobotActions {
         return a;
     }
 
-
     private void randomMove(Robot r, double mind, double maxd) {
         r.ahead(Math.signum(DataShaper.random(-1, 1)) * DataShaper.random(mind, maxd));
     }
-
 
     private  void randomRotate(Robot r, double mina, double maxa) {
         turnRad(r, Math.signum(DataShaper.random(-1, 1)) * DataShaper.random(mina, maxa));
     }
 
+	public static void standFlankToBearing(Robot r, double bearing) {
+        double alpha =
+            DataShaper.truncateRad(DataShaper.getHeadingRadiansFromX(r) - bearing);
 
+        alpha = Math.atan(Math.tan(alpha));
+        if(Math.abs(alpha) < Math.PI / 6) {
+            RobotActions.turnRad(this, Math.signum(alpha) * (Math.PI / 2 - Math.abs(alpha)));
+        }
+    }
 }

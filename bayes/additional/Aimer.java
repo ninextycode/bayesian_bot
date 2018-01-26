@@ -35,27 +35,35 @@ public class Aimer {
 
     public static final long PREDICT_TIME_LIMIT = 45;
     public static final long REVERSE_VEL_TIME = 12;
+	public static final long OBSERVATIONS_NEEDED = 10;
+
+	public boolean wantToShoot(Matrix data, int numberOfObs) {
+		return HistoryFunctions.getHistoryTimeSincePrevious(data) <= Aimer.PREDICT_TIME_LIMIT
+		 	&& numberOfObs >= OBSERVATIONS_NEEDED;
+	}
+
+	public static double maxShootDistance(double energy) {
+		return PREDICT_TIME_LIMIT * DataShaper.getBulletSpeed(energy);
+	}
 
     public void updateParameters(LinkedList<Matrix> observationsList,
         String name) {
 		preparePriorIfNecessary(name);
 
-		LinkedList<Matrix> observationsList = observationsMap.get(name);
 		Iterator<Matrix> it = observationsList.descendingIterator();
-    	Matrix lastObservation = it.next();
-		boolean stopped = HistoryFunctions.isStopMode(lastObservation);
+    	Matrix lastObservationData = it.next();
 
 		while(it.hasNext()) {
 			Matrix oldData = it.next();
-			long t =
-                HistoryFunctions.getHistoryTime(lastOnScannedRobotTime)
+			double timeSince =
+                HistoryFunctions.getHistoryTime(lastObservationData)
                  - HistoryFunctions.getHistoryTime(oldData);
 
              // only consider observations which are not very old, and
              // which are not far away apart in time from the one before
 			if(
-			t > PREDICT_TIME_LIMIT
-            || HistoryFunctions.getHistoryTimeSincePrevious(oldData) > REVERSE_VEL_TIME) {
+				timeSince > PREDICT_TIME_LIMIT
+	            || HistoryFunctions.getHistoryTimeSincePrevious(oldData) > REVERSE_VEL_TIME) {
 
 				return;
 			}
@@ -63,13 +71,13 @@ public class Aimer {
 			double vOld = DataShaper.simplifiedV(HistoryFunctions.getHistoryVelocity(oldData));
 			double aOld = HistoryFunctions.getHistoryHeading(oldData);
 
-            Matrix dPos = HistoryFunctions.getHistoryXY(data).add(
+            Matrix dPos = HistoryFunctions.getHistoryXY(lastObservationData).add(
                 HistoryFunctions.getHistoryXY(oldData).inplaceScale(-1)
             );
 
-			Matrix dPosTransformed = CoordiantesTransform.toVelocityCoordinares(
+			Matrix dPosTransformed = CoordinatesTransform.toVelocityCoordinares(
 				vOld, aOld,
-				t, dPos
+				(long)timeSince, dPos
 			);
 
             boolean stopped = HistoryFunctions.isStopMode(oldData);
@@ -77,8 +85,8 @@ public class Aimer {
             BayesianNormal parallelModel = getParallelModel(name, stopped);
             BayesianNormal perpModel = getParallelModel(name, stopped);
 
-			parallelModel.update(dPosTransformed.get(0));
-			parallelModel.update(dPosTransformed.get(0));
+			parallelModel.update(dPosTransformed.get(0, 0));
+			perpModel.update(dPosTransformed.get(0, 1));
 		}
 	}
 
@@ -89,7 +97,7 @@ public class Aimer {
     }
 
     private void fillPrior(String name) {
-        HashMap<String, BayesianNormal>[] modelsMaps = new HashMap<String, BayesianNormal>[] {
+        HashMap[] modelsMaps = new HashMap[] {
             modelsInMovePrallel, modelsInMovePerp, modelsAfterStopPrarllel, modelsAfterStopPerp
         };
 
@@ -98,18 +106,19 @@ public class Aimer {
         };
 
         for(int i = 0; i < priorParameters.length; i++) {
-            modelsMaps[i].put(priorParameters[i][0], priorParameters[i][1],
-                                priorParameters[i][2], priorParameters[i][3]);
+            modelsMaps[i].put(name, new BayesianNormal(priorParameters[i][0], priorParameters[i][1],
+                                priorParameters[i][2], priorParameters[i][3]));
         }
     }
 
     public Aimer() {
     }
 
-    public Matrix suggestEnemyPoitionChange(String name, Matrix data, long time) {
+    public Matrix suggestEnemyPoitionChange(Matrix data, String name, long time) {
 
-        Matrix targetPosition = DataShaper.getAbsPosition(this, event);
-        double alpha = DataShaper.getHeadingRadiansFromX(event);
+        Matrix targetPosition = HistoryFunctions.getHistoryXY(data);
+
+        double alpha = HistoryFunctions.getHistoryHeading(data);
 
         double simplifiedV = DataShaper.simplifiedV(event.getVelocity());
 

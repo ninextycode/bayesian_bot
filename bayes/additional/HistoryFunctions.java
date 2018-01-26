@@ -54,6 +54,7 @@ public class HistoryFunctions {
                     HistoryFunctions.getHistoryVelocity(oldData) == 0;
     }
 
+    
 
     public static Matrix writeMatrixOfObservation(ScannedRobotEvent event,
         HashMap<String, LinkedList<Matrix>> observationsMap) {

@@ -1,4 +1,7 @@
-class CoordinatesTransform {
+package bayes.additional;
+
+
+public class CoordinatesTransform {
 
     public static Matrix toVelocityCoordinares(double vSimple, double a, long t, Matrix p) {
         double vtx  = vSimple * Math.cos(a) * t;
@@ -29,8 +32,8 @@ class CoordinatesTransform {
     }
 
     public static Matrix fromOldOrthoCoords(Matrix v, Matrix ax0, Matrix ax1) {
-        double s0 = Math.hypot(ax0.get(0, 0), ax0.get(1, 0));
-        double s1 = Math.hypot(ax1.get(0, 0), ax1.get(1, 0));
+        double s0 = DataShaper.hypot(ax0);
+        double s1 = DataShaper.hypot(ax1);
 
         Matrix inverseRotate = new Matrix(2, 2, new double[] {
             ax0.get(0, 0) / s0,  ax1.get(0, 0) / s1,
@@ -46,8 +49,8 @@ class CoordinatesTransform {
     }
 
     public static Matrix toNewOrthoCoords(Matrix v, Matrix ax0, Matrix ax1) {
-        double s0 = Math.hypot(ax0.get(0, 0), ax0.get(1, 0));
-        double s1 = Math.hypot(ax1.get(0, 0), ax1.get(1, 0));
+        double s0 = DataShaper.hypot(ax0);
+        double s1 = DataShaper.hypot(ax1);
 
         Matrix rotate = new Matrix(2, 2, new double[] {
             ax0.get(0, 0) / s0, ax0.get(1, 0) / s0,
