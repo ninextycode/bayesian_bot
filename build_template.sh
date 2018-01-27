@@ -1,6 +1,6 @@
 name=BayesBot
-rtpath= #to be set
-robocodepath= #to be set
+rtpath= #path to rt.jar
+robocodepath= # path to robocode
 cp=$rtpath:$robocodepath/libs/robocode.jar:
 
 find . -type f -name '*.class' -delete\

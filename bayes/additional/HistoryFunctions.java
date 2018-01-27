@@ -18,7 +18,7 @@ public class HistoryFunctions {
     }
 
     public static Matrix getHistoryXY(Matrix h) {
-        return h.get(0, 0);
+        return new Matrix(2, 1, new double[]{ h.get(0, 0), h.get(1, 0)});
     }
 
     public static double getHistoryTime(Matrix h) {
@@ -54,12 +54,12 @@ public class HistoryFunctions {
                     HistoryFunctions.getHistoryVelocity(oldData) == 0;
     }
 
-    
 
-    public static Matrix writeMatrixOfObservation(ScannedRobotEvent event,
+
+    public static Matrix writeMatrixOfObservation(Robot r, ScannedRobotEvent event,
         HashMap<String, LinkedList<Matrix>> observationsMap) {
 
-		Matrix pos = DataShaper.getAbsPosition(this, event);
+		Matrix pos = EventDataShaper.getAbsPosition(r, event);
 
 		Matrix data = new Matrix(7, 1, new double[] {
 			pos.get(0, 0),  //0
@@ -67,7 +67,7 @@ public class HistoryFunctions {
 			event.getTime(),    //2
 
 			event.getVelocity(),//3
-			DataShaper.getHeadingRadiansFromX(event), //4
+			EventDataShaper.getHeadingRadiansFromX(event), //4
 			0 , //5 acceleration / change in velocity
 			100000  //6 time change since last observation of the enemy
                   //initially large, to make first data point meaningless

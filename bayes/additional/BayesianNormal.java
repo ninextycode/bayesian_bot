@@ -40,9 +40,6 @@ public class BayesianNormal {
 
     public static double getNormal(double mean, double var) {
         // Box–Muller transform
-
-        double epsilon = 10e-9;
-
         double z1;
         boolean generate;
 
@@ -52,7 +49,7 @@ public class BayesianNormal {
            u1 = 1 - Math.random();
            u2 = 1 - Math.random();
          }
-        while ( u1 <= epsilon );
+        while ( u1 <= 0 ); //we dont wont log(0)
 
         double z0;
         z0 = Math.sqrt(-2.0 * Math.log(u1)) *

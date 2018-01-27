@@ -15,8 +15,8 @@ public class BayesBot extends Robot	{
 									new HashMap<String, LinkedList<Matrix>>();
 
     public static Aimer aimer = new Aimer();
-	private Matrix lastTargetPosition;
 
+	private Matrix lastTargetPosition;
 	private ScannedRobotEvent lastObservation, lastTargetEvent;
 	private HitByBulletEvent lastHitEvent;
 
@@ -25,10 +25,11 @@ public class BayesBot extends Robot	{
 
 	private double wallPadding;
 	private long historyTimeLimit = 6000;
+	private double battleFieldWidth, battleFieldHeight;
 
 
 	private void clearToCheck() {
-		toCheck = new ArrayList<Matrix>();
+		this.toCheck = new ArrayList<Matrix>();
 	}
 
 	private void addToCheck(Matrix m) {
@@ -38,29 +39,6 @@ public class BayesBot extends Robot	{
 	public boolean insideEvent() {
 		return insideOnScannedRobot || insideOnHitByBullet || insideOnHitRobot;
 	}
-
-	private void check() {
-		if(insideEvent()) { //only check if not working on events
-			return;
-		}
-
-		if(toCheck == null || toCheck.size() == 0) {
-			return;
-		}
-		ArrayList<Matrix> toCheckTemp = toCheck; //to prevent recursion stack owerflow
-		toCheck = new ArrayList<Matrix>();
-
-		for(int i = 0; i < toCheckTemp.size(); i++) {
-			Matrix check = toCheckTemp.get(i);
-			RobotActions.rotateGunAtPoint(this, check.get(0, 0), check.get(1, 0));
-		}
-	}
-
-    @Override
-    public void fire(double energy) {
-        super.fire(energy);
-        return;
-    }
 
     //if robot scans an evemy while moving, enemy's position canot be correctly calculated
     //this flag indicates if the last robot's move was rotation insteat of motion
@@ -108,8 +86,34 @@ public class BayesBot extends Robot	{
 	}
 
 
+	private void check() {
+		if(insideEvent()) { //only check if not working on events
+			return;
+		}
+
+		//to prevent recursion stack owerflow; without update of toCheck the next call to check will return
+		if(toCheck == null || toCheck.size() == 0) {
+			return;
+		}
+		ArrayList<Matrix> toCheckTemp = toCheck;
+		toCheck = new ArrayList<Matrix>();
+
+		for(int i = 0; i < toCheckTemp.size(); i++) {
+			Matrix check = toCheckTemp.get(i);
+
+			long lastObsTime0 = lastObservation.getTime();
+			RobotActions.rotateGunAtPoint(this, check.get(0, 0), check.get(1, 0));
+			long lastObsTime1 = lastObservation.getTime();
+			if(lastObsTime0 != lastObsTime1) { //we found new target, no nee to scan more
+				check();  //there may be new  pointds to check from last ScannedRobotEvent
+				break;
+			}
+		}
+	}
+
 	private void initialise() {
-		wallPadding = 100;
+		battleFieldWidth = getBattleFieldWidth();
+		battleFieldHeight = getBattleFieldHeight();
 	}
 
 	public void run() {
@@ -122,139 +126,33 @@ public class BayesBot extends Robot	{
 
 
 	private void nextAction() {
-		if(!isNearWall()) {
-			goToClosestWall();
+		if(!isInCenter()) {
+			goToCenter();
 		} else {
-			scan();
-			//patrol();
+			lookAround();
 		}
 	}
 
-	private boolean isNearWall() {
-		return isNearWall(DataShaper.getMyPosition(this));
+
+	private void goToCenter() {
+		RobotActions.moveAt(this, getCenter());
 	}
 
-	private boolean isNearWall(Matrix point) {
-		return isNearWall(0, point) ||
-				isNearWall(1, point) ||
-			    isNearWall(2, point) ||
-				isNearWall(3, point);
+	private boolean isInCenter() {
+		return isInCenter(DataShaper.getMyPosition(this));
 	}
 
-	private boolean isNearWall(int wallIndex) {
-		return isNearWall(wallIndex, DataShaper.getMyPosition(this));
+	private boolean isInCenter(Matrix p) {
+		Matrix center = getCenter();
+		double dist = DataShaper.hypot(center.add(p.scale(-1)));
+		return dist < 300;
 	}
 
-	private boolean isNearWall(int wallIndex, Matrix point) {
-		wallIndex = wallIndex % 4;
-		switch (wallIndex) {
-			case 0:
-				return (getBattleFieldWidth() - point.get(0,0)) <= wallPadding;
-			case 1:
-				return (getBattleFieldHeight() - point.get(1,0)) <= wallPadding;
-			case 2:
-				return point.get(0,0) <= wallPadding;
-			case 3:
-				return point.get(1,0) <= wallPadding;
-		}
-		return false;
+	private Matrix getCenter() {
+		return new Matrix(2, 1, new double[] {battleFieldWidth / 2, battleFieldHeight / 2});
 	}
 
-	private void goToClosestWall() {
-		int closertWall = getClosestWall() ;
-		double[] target = new double[2];
-
-		switch (closertWall) {
-			case 0:
-				target[0] = getBattleFieldWidth() - wallPadding / 2;
-				target[1] = getY();
-			break;
-			case 1:
-				target[0] = getX();
-				target[1] =  getBattleFieldHeight() - wallPadding / 2;
-			break;
-			case 2:
-				target[0] = wallPadding / 2;
-				target[1] = getY();
-			break;
-			case 3:
-				target[0] = getX();
-				target[1] = wallPadding / 2;
-			break;
-		}
-
-		RobotActions.moveAt(this, target[0], target[1]);
-	}
-
-
-	private int getClosestWall() {
-		double[] distances = new double[] {
-			getBattleFieldWidth() - getX(),
-			getBattleFieldHeight() - getY(),
-			getX(),
-			getY()
-		};
-
-		int minD = 0;
-		for(int i = 0; i < distances.length; i++) {
-			if(distances[i] < distances[minD]) {
-				minD = i;
-			}
-		}
-		return minD;
-	}
-
-
-	private void patrol() {
-        lookAround();
-		//patrol(true);
-	}
-
-	private void patrol(boolean adjustGun) {
-
-
-		int wall = getClosestWall();
-		double[] target = new double[2];
-		int patrolStep = 200;
-
-		switch (wall) {
-			case 0:
-				target[0] = getBattleFieldWidth() - wallPadding / 2;
-				target[1] = Math.min(getY() + patrolStep,
-										getBattleFieldHeight() - wallPadding/2 + 1);
-
-				if (target[1] >= (getBattleFieldHeight() - wallPadding)) {
-					target[1] = getBattleFieldHeight() - wallPadding/2 + 1;
-				}
-			break;
-			case 1:
-				target[0] = Math.max(getX() - patrolStep, wallPadding/2 - 1);
-				target[1] = getBattleFieldHeight() - wallPadding / 2;
-				if (target[0] <= wallPadding) {
-					target[0] = wallPadding/2 - 1;
-				}
-			break;
-			case 2:
-				target[0] = wallPadding / 2;
-				target[1] = Math.max(getY() - patrolStep, wallPadding/2 - 1);
-				if (target[1] <= wallPadding) {
-					target[1] = wallPadding/2 - 1;
-				}
-			break;
-			case 3:
-				target[0] = Math.min(getX() + patrolStep,
-										getBattleFieldWidth() - wallPadding/2 + 1);
-				if (target[0] >= (getBattleFieldWidth() - wallPadding)) {
-					target[0] = getBattleFieldWidth() - wallPadding/2 + 1;
-				}
-				target[1] = wallPadding / 2;
-			break;
-		}
-
-		RobotActions.moveAtFaceForward(this, target[0], target[1]);
-
-		lookAround();
-	}
+	private boolean patrollingUp;
 
 	private void lookAround() {
 		for(int i = 0; i < 4; i++) {
@@ -267,56 +165,63 @@ public class BayesBot extends Robot	{
 	@Override
 	public void onScannedRobot(ScannedRobotEvent event) {
         insideOnScannedRobot = true;
+		ScannedRobotEvent eventBefore = lastObservation;
         lastObservation = event;
 
-		Matrix data = HistoryFunctions.writeMatrixOfObservation(event, observationsMap);
+		Matrix data = HistoryFunctions.writeMatrixOfObservation(this, event, observationsMap);
         aimer.updateParameters(observationsMap.get(event.getName()), event.getName());
 
-        if(lock) {
+
+		if(lock) {
             insideOnScannedRobot = false;
             return;
         }
 
+ 		Matrix position = HistoryFunctions.getHistoryXY(data);
+		double a = EventDataShaper.getBearingRadiansFromX(this, event);
+		checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
+
+
+		if(RobotActions.standFlankToBearing(this, a)) {
+			insideOnScannedRobot = false;
+			return;
+		}
+
+		double energyDiff = eventBefore.getEnergy() - event.getEnergy();
+		if(0 < energyDiff && energyDiff <= 3) {
+			runFromBullets(EventDataShaper.getBearingRadiansFromX(this, event));
+			insideOnScannedRobot = false;
+			return;
+		}
+
+
         //at least check arount where we saw robot if last action was moving
         //ignoring the fact that position is not exactly correct
-        if(!lastWasStopped) {
-           Matrix position = HistoryFunctions.getHistoryXY(data);
-           checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
-        } else {
-           maybeShoot(event, data);
-        }
+        if(lastWasStopped) {
+          	maybeShoot(event, data);
+		}
+
 
 		HistoryFunctions.clearFromOldObservations(this, observationsMap, historyTimeLimit);
 		insideOnScannedRobot = false;
 	}
 
-
-	public void maybeShoot(ScannedRobotEvent event, Matrix data) {
+	private void maybeShoot(ScannedRobotEvent event, Matrix data) {
 		double distance = event.getDistance();
-		double energy = DataShaper.getEnergyFromDistance(distance);
+		double energy = DataShaper.getEnergyFromDistance(this, distance);
 
-		System.out.println(Aimer.maxShootDistance(energy));
-		if(distance > Aimer.maxShootDistance(energy)) {
-			return;
-		}
-
-		double a = DataShaper.getBearingRadiansFromX(this, event);
+		double a = EventDataShaper.getBearingRadiansFromX(this, event);
 		LinkedList<Matrix> observationsList = observationsMap.get(event.getName());
 
-		if(! aimer.wantToShoot(data, observationsList.size())) {
-			Matrix position = HistoryFunctions.getHistoryXY(data);
-			checkAroundPoint(position, HistoryFunctions.getHistoryHeading(data));
+		if(! aimer.wantToShoot(data, observationsList.size(), energy, distance)) {
 			return;
 		}
-
-
 		shootConsideringSpeed(event, data, energy);
 	}
 
 
-
-
 	public void shootConsideringSpeed(ScannedRobotEvent event, Matrix data, double energy) {
+
         Matrix targetPosition = HistoryFunctions.getHistoryXY(data);
 		lastTargetPosition = targetPosition.copy();
         lastTargetEvent = event;
@@ -331,32 +236,35 @@ public class BayesBot extends Robot	{
             (long)Math.ceil(
                 distance / DataShaper.getBulletSpeed(energy) + 2);
 
-		Matrix guessedPositionChange;
+		Matrix guessedPositionChange, guessInAbsCoordinates;
+		String name = event.getName();
+		int i = 0;
+		boolean dontShoot = false;
 		do {
-			guessedPositionChange = aimer.suggestEnemyPoitionChange(data, event.getName(), bulletFlyTime);
-		} while( //reject unrealistic positions
-			DataShaper.hypot(guessedPositionChange)
-                >= bulletFlyTime * DataShaper.MAX_V);
 
+			guessedPositionChange = aimer.suggestEnemyPoitionChange(data, name , bulletFlyTime);
+			guessInAbsCoordinates = guessedPositionChange.add(lastTargetPosition);
+			if(i > 1000) {
+				dontShoot = true;
+				break;
+			}
+			i++;
+		} while(DataShaper.hypot(guessedPositionChange) >= DataShaper.MAX_V * bulletFlyTime
+					|| !isOnField(guessInAbsCoordinates)); // our guess shouldnt be impossibly far avay and out of the battlefield
 
-
-		Matrix guessInAbsCoordinates = guessedPositionChange.add(lastTargetPosition);
-
-		lock = true;
-        RobotActions.shootAt(this, guessInAbsCoordinates);
-		lock = false;
+		if(! dontShoot) {
+			lock = true;
+        	RobotActions.shootAt(this, guessInAbsCoordinates, energy);
+			lock = false;
+		} else {
+			System.out.println("Decided not to shoot, cannot sample a proper guess");
+		}
 
 		scan(); // maybe target is still in the radar ray
 		checkAroundPoint(targetPosition, HistoryFunctions.getHistoryHeading(data));
 
 	}
 
-	private boolean isDuel() {
-		if(lastTargetEvent == null || lastHitEvent == null) {
-			return false;
-		}
-		return lastHitEvent.getName().equals(lastTargetEvent.getName());
-	}
 
 	@Override
  	public void onHitRobot(HitRobotEvent event) {
@@ -366,7 +274,7 @@ public class BayesBot extends Robot	{
 		insideOnHitRobot = true;
 		stop();
 
-		double a = DataShaper.getBearingRadiansFromX(this, event);
+		double a = EventDataShaper.getBearingRadiansFromX(this, event);
 
 		lock = true;
 		RobotActions.rotateGunRadAt(this, a);
@@ -377,22 +285,7 @@ public class BayesBot extends Robot	{
 		insideOnHitRobot = false;
 	}
 
-
-	@Override
-	public void onHitByBullet(HitByBulletEvent event) {
-		HitByBulletEvent eventBeforeThis = lastHitEvent;
-		lastHitEvent = event;
-		insideOnHitByBullet = true;
-
-		if(lock) {
-            insideOnHitByBullet = false;
-			return;
-        }
-
-		insideOnHitByBullet = false;
-	}
-
-	private void checkAround(double alpha, String name) {
+	private void checkAroundAlpha(double alpha) {
 		clearToCheck();
 
 		Matrix myPosition = DataShaper.getMyPosition(this);
@@ -433,10 +326,10 @@ public class BayesBot extends Robot	{
 		});
 
 		Matrix check  = position;
-		Matrix check0 = position.add(vel.inplaceScale(2));
-		Matrix check1 = position.add(vel.inplaceScale(-1));
-		Matrix check2 = position.add(vel.inplaceScale(4));
-		Matrix check3 = position.add(vel.inplaceScale(-2));
+		Matrix check0 = position.add(vel.inplaceScale(4));
+		Matrix check1 = position.add(vel.inplaceScale(-2));
+		Matrix check2 = position.add(vel.inplaceScale(20));
+		Matrix check3 = position.add(vel.inplaceScale(-10));
 
 		addToCheck(check);
 		addToCheck(check0);
@@ -445,13 +338,32 @@ public class BayesBot extends Robot	{
 		addToCheck(check3);
 	}
 
-	private void runFromBullets(HitByBulletEvent event) {
-		System.out.println("runFromBullets");
-		clearToCheck();
-		RobotActions.standFlankToBearing(this, DataShaper.getBearingRadiansFromX(this, event));
 
+	@Override
+	public void onHitByBullet(HitByBulletEvent event) {
+		HitByBulletEvent eventBeforeThis = lastHitEvent;
+		lastHitEvent = event;
+		insideOnHitByBullet = true;
 
-		smartRandomAhead(80, 200);
+		if(lock) {
+            insideOnHitByBullet = false;
+			return;
+        }
+
+		if(!isInCenter()) {
+			insideOnHitByBullet = false;
+			return;
+		}
+
+		double a = EventDataShaper.getBearingRadiansFromX(this, event);
+		checkAroundAlpha(a);
+
+		insideOnHitByBullet = false;
+	}
+
+	private void runFromBullets(double hitBearing) {
+		RobotActions.standFlankToBearing(this, hitBearing);
+		smartRandomAhead(100, 120);
 	}
 
 
@@ -483,11 +395,11 @@ public class BayesBot extends Robot	{
 			);
 
 			index++;
-		} while(isInCorner(p0) && (isInCorner(p1)));
+		} while(!isOnField(p0) && !isOnField(p1));
 
-		if(isInCorner(p0)) {
+		if(!isOnField(p0)) {
 			target = p1;
-		} else if(isInCorner(p1)) {
+		} else if(!isOnField(p1)) {
 			target = p0;
 		} else {
 			if(Math.random() > 0.5) {
@@ -499,12 +411,8 @@ public class BayesBot extends Robot	{
 		RobotActions.moveAt(this, target);
 	}
 
-	private boolean isInCorner(Matrix p) {
-		for(int i = 0; i < 4; i++) {
-			if(isNearWall(i, p) && isNearWall(i+1, p)) {
-				return true;
-			}
-		}
-		return false;
+	private boolean isOnField(Matrix p) {
+		return 0 < p.get(0, 0) && p.get(0, 0) < battleFieldWidth &&
+				0 < p.get(1, 0) && p.get(1, 0) < battleFieldHeight;
 	}
 }

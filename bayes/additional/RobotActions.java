@@ -21,6 +21,9 @@ public class RobotActions {
         moveAt(r, p.get(0, 0), p.get(1, 0));
     }
 
+    public static void moveAtFaceForward(Robot r, Matrix p) {
+        moveAtFaceForward(r, p.get(0, 0), p.get(1, 0));
+    }
 
     public static void moveAtFaceForward(Robot r, double x, double y) {
         double a = DataShaper.getAngleToPoint(r, x, y);
@@ -174,13 +177,17 @@ public class RobotActions {
         turnRad(r, Math.signum(DataShaper.random(-1, 1)) * DataShaper.random(mina, maxa));
     }
 
-	public static void standFlankToBearing(Robot r, double bearing) {
+	public static boolean standFlankToBearing(Robot r, double bearing) {
         double alpha =
             DataShaper.truncateRad(DataShaper.getHeadingRadiansFromX(r) - bearing);
 
         alpha = Math.atan(Math.tan(alpha));
         if(Math.abs(alpha) < Math.PI / 6) {
-            RobotActions.turnRad(this, Math.signum(alpha) * (Math.PI / 2 - Math.abs(alpha)));
+            r.setAdjustGunForRobotTurn(true);
+            RobotActions.turnRad(r, Math.signum(alpha) * (Math.PI / 2 - Math.abs(alpha)));
+            r.setAdjustGunForRobotTurn(false);
+            return true;
         }
+        return false;
     }
 }

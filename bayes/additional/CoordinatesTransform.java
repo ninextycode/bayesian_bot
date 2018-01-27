@@ -3,7 +3,8 @@ package bayes.additional;
 
 public class CoordinatesTransform {
 
-    public static Matrix toVelocityCoordinares(double vSimple, double a, long t, Matrix p) {
+    public static Matrix toVelocityCoordinares(double v, double a, long t, Matrix p) {
+        double vSimple = DataShaper.simplifiedV(v);
         double vtx  = vSimple * Math.cos(a) * t;
         double vty =  vSimple * Math.sin(a) * t;
 
@@ -12,12 +13,13 @@ public class CoordinatesTransform {
 
         Matrix ax0 = new Matrix(2, 1, new double[] {vtx, 	vty});
         Matrix ax1 = new Matrix(2, 1, new double[] {vtxPerp, vtyPerp});
-        Matrix dp = DataShaper.toNewOrthoCoords(p , ax0, ax1);
+        Matrix dp = CoordinatesTransform.toNewOrthoCoords(p , ax0, ax1);
 
         return dp;
     }
 
-    public static Matrix fromVelocityCoordinares(double vSimple, double a, long t, Matrix p) {
+    public static Matrix fromVelocityCoordinares(double v, double a, long t, Matrix p) {
+        double vSimple = DataShaper.simplifiedV(v);
         double vtx  = vSimple * t * Math.cos(a);
         double vty =  vSimple * t * Math.sin(a);
 
@@ -26,7 +28,7 @@ public class CoordinatesTransform {
 
         Matrix ax0 = new Matrix(2, 1, new double[] {vtx, 	vty});
         Matrix ax1 = new Matrix(2, 1, new double[] {vtxPerp, vtyPerp});
-        Matrix dp = DataShaper.fromOldOrthoCoords(p , ax0, ax1);
+        Matrix dp = CoordinatesTransform.fromOldOrthoCoords(p , ax0, ax1);
 
         return dp;
     }

@@ -15,7 +15,11 @@ public class DataShaper {
     }
 
     public static double truncateRad(double x) {
-        return Math.atan2(Math.sin(x), Math.cos(x)); //atan return angles in a range [-pi, pi]
+        return Math.atan2(Math.sin(x), Math.cos(x)); //atan2 return angles in a range [-pi, pi]
+    }
+
+    public static double truncateRadPi(double x) {
+        return Math.atan(Math.tan(x)); //atan return angles in a range [-pi/2, pi/2]
     }
 
     public static double angleFromX(double angleFromY) {
@@ -65,12 +69,14 @@ public class DataShaper {
     }
 
 
-    public static double getEnergyFromDistance(double distance) {
-        if(distance > 200) {
-            return 1.1;
-        }
+    public static double getEnergyFromDistance(Robot r, double distance) {
+        if( r.getEnergy() < 5)
+            return 0.1;
+            
+        if( r.getEnergy() < 15)
+            return 0.5;
 
-        return 3;
+        return 1;
     }
 
     //round velocity to have as value of 8
@@ -82,36 +88,29 @@ public class DataShaper {
         return v;
     }
 
-
-    public static double getBearingRadiansFromX(Robot r, ScannedRobotEvent e) {
-		return truncateRad(angleFromX(e.getBearingRadians() + getHeadingRadiansFromY(r)));
-	}
-
-	public static double getBearingRadiansFromX(Robot r, HitRobotEvent e) {
-		return truncateRad(angleFromX(e.getBearingRadians() + getHeadingRadiansFromY(r)));
-    }
-
-     public static double getBearingRadiansFromX(Robot r, HitByBulletEvent e) {
-       return truncateRad(angleFromX(e.getBearingRadians() + getHeadingRadiansFromY(r)));
-     }
-
-    public static double[] getAbsPositionArray(Robot r, ScannedRobotEvent e) {
-        double[] pos =  getCartesian(e.getDistance(),  getBearingRadiansFromX(r, e));
-        pos[0] += r.getX();
-        pos[1] += r.getY();
-        return pos;
-    }
-
-    public static Matrix getAbsPosition(Robot r, ScannedRobotEvent e) {
-        return new Matrix(2, 1, getAbsPositionArray(r, e));
-    }
-
     public static double getHeadingRadiansFromX(Robot r) {
         return truncateRad(angleFromX(getHeadingRadiansFromY(r)));
     }
 
-    public static double getHeadingRadiansFromX(
-    ScannedRobotEvent e) {
-        return truncateRad(angleFromX(e.getHeadingRadians()));
+    public static double getHeadingRadiansFromY(Robot r) {
+        return	Math.toRadians(r.getHeading());
+    }
+
+
+    public static double getAngleToPoint(Robot r, Matrix point) {
+        Matrix shiftedPoint = point.add(getMyPosition(r).inplaceScale(-1));
+        return getTheta(shiftedPoint);
+    }
+
+    public static double getAngleToPoint(Robot r, double x, double y) {
+        return getAngleToPoint(r, new Matrix(2, 1, new double[] {x, y}));
+    }
+
+    public static double getGunHeadingFromX(Robot r) {
+        return truncateRad(angleFromX(Math.toRadians(r.getGunHeading())));
+    }
+
+    public static double getRadarHeadingFromX(Robot r) {
+        return truncateRad(angleFromX(Math.toRadians(r.getRadarHeading())));
     }
 }

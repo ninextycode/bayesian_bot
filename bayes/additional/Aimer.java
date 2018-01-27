@@ -6,7 +6,7 @@ import java.util.LinkedList;
 
 public class Aimer {
 	private static double[] mkabMoveParallelPrior = new double[] {
-		0.7, 10, 3, 1
+		1, 10, 3, 1
 	};
 
 	private static double[] mkabMovePerpPrior = new double[] {
@@ -37,9 +37,8 @@ public class Aimer {
     public static final long REVERSE_VEL_TIME = 12;
 	public static final long OBSERVATIONS_NEEDED = 10;
 
-	public boolean wantToShoot(Matrix data, int numberOfObs) {
-		return HistoryFunctions.getHistoryTimeSincePrevious(data) <= Aimer.PREDICT_TIME_LIMIT
-		 	&& numberOfObs >= OBSERVATIONS_NEEDED;
+	public boolean wantToShoot(Matrix data, int numberOfObs, double energy, double distance) {
+		return maxShootDistance(energy) >= distance;
 	}
 
 	public static double maxShootDistance(double energy) {
@@ -68,7 +67,7 @@ public class Aimer {
 				return;
 			}
 
-			double vOld = DataShaper.simplifiedV(HistoryFunctions.getHistoryVelocity(oldData));
+			double vOld = HistoryFunctions.getHistoryVelocity(oldData);
 			double aOld = HistoryFunctions.getHistoryHeading(oldData);
 
             Matrix dPos = HistoryFunctions.getHistoryXY(lastObservationData).add(
@@ -86,7 +85,7 @@ public class Aimer {
             BayesianNormal perpModel = getParallelModel(name, stopped);
 
 			parallelModel.update(dPosTransformed.get(0, 0));
-			perpModel.update(dPosTransformed.get(0, 1));
+			perpModel.update(dPosTransformed.get(1, 0));
 		}
 	}
 
@@ -111,20 +110,13 @@ public class Aimer {
         }
     }
 
-    public Aimer() {
-    }
-
     public Matrix suggestEnemyPoitionChange(Matrix data, String name, long time) {
-
         Matrix targetPosition = HistoryFunctions.getHistoryXY(data);
-
         double alpha = HistoryFunctions.getHistoryHeading(data);
-
-        double simplifiedV = DataShaper.simplifiedV(event.getVelocity());
+        double v = HistoryFunctions.getHistoryVelocity(data);
 
 
         boolean stopped = HistoryFunctions.isStopMode(data);
-
         BayesianNormal parallelModel = getParallelModel(name, stopped);
         BayesianNormal perpModel = getParallelModel(name, stopped);
 
@@ -133,11 +125,8 @@ public class Aimer {
             perpModel.sample()
         });
 
-
-
-
-        guessedPositionChange = CoordiantesTransform.fromVelocityCoordinares(simplifiedV,
-                                                        alpha, bulletFlyTime, targetInVCoordinates);
+        Matrix guessedPositionChange = CoordinatesTransform.fromVelocityCoordinares(v,
+                                                        alpha, time, targetInVCoordinates);
 
         return guessedPositionChange;
     }
